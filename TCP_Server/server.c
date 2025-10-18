@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #define BACKLOG 10
 #define BUFF_SIZE 1024
@@ -22,6 +23,18 @@ int main(int argc, char *argv[])
 
     int SERV_PORT = atoi(argv[1]);
     char *storageDir = argv[2];
+
+    // Check and create storage directory if it doesn't exist
+    struct stat st = {0};
+    if (stat(storageDir, &st) == -1)
+    {
+        if (mkdir(storageDir, 0755) != 0)
+        {
+            perror("Error: Cannot create storage directory");
+            exit(1);
+        }
+        printf("Created storage directory: %s\n", storageDir);
+    }
 
     // Step 1: Construct socket
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -68,11 +81,11 @@ int main(int argc, char *argv[])
         printf("Accepted connection from %s:%d\n",
                inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
 
-        // Gửi chào mừng
+        // Send welcome message
         char *welcome = "+OK Welcome to file server";
         send(connfd, welcome, strlen(welcome), 0);
 
-        // Nhận thông điệp từ client
+        // Receive UPLD command
         int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
         if (rcvBytes <= 0)
         {
@@ -80,16 +93,53 @@ int main(int argc, char *argv[])
             close(connfd);
             continue;
         }
-
         buff[rcvBytes] = '\0';
-        printf("Received from client [%s:%d]: %s\n",
-               inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff);
+        printf("Received: %s\n", buff);
 
-        // Phản hồi yêu cầu UPLD
+        // Parse UPLD command
+        char filename[256];
+        long filesize;
+        if (sscanf(buff, "UPLD %s %ld", filename, &filesize) != 2)
+        {
+            printf("Invalid command format.\n");
+            close(connfd);
+            continue;
+        }
+
+        // Send response to client
         char *resp = "+OK Please send file";
         send(connfd, resp, strlen(resp), 0);
-        printf("Sent response to client [%s:%d]\n",
-               inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+
+        // Create destination file path
+        char filepath[512];
+        snprintf(filepath, sizeof(filepath), "%s/%s", storageDir, filename);
+        FILE *f = fopen(filepath, "wb");
+        if (f == NULL)
+        {
+            perror("Error: Cannot open file to write");
+            close(connfd);
+            continue;
+        }
+
+        printf("Receiving file '%s' (%ld bytes)...\n", filename, filesize);
+
+        // Receive file data
+        long received = 0;
+        while (received < filesize)
+        {
+            int bytes = recv(connfd, buff, BUFF_SIZE, 0);
+            if (bytes <= 0)
+                break;
+            fwrite(buff, 1, bytes, f);
+            received += bytes;
+        }
+
+        fclose(f);
+        printf("File '%s' received (%ld/%ld bytes)\n", filename, received, filesize);
+
+        // Send completion notification
+        char *done = "+OK Successful upload";
+        send(connfd, done, strlen(done), 0);
 
         close(connfd);
     }

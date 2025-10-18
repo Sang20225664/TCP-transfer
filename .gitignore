@@ -2,3 +2,8 @@
 *.txt
 client
 server
+# storage folder
+storage/*
+# log files
+logs/*.log
+

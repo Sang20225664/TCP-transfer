@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-#define BUFF_SIZE 1024
+#define BUFF_SIZE 16384 // 16KB block size
 
 int main(int argc, char *argv[])
 {
@@ -35,7 +35,6 @@ int main(int argc, char *argv[])
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_port = htons(SERV_PORT);
-
     if (inet_pton(AF_INET, serverIP, &servAddr.sin_addr) <= 0)
     {
         perror("Error: Invalid address");
@@ -43,19 +42,18 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Step 3: Connect to server
+    // Step 3: Connect
     if (connect(clientfd, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0)
     {
         perror("Error: Cannot connect to server");
         close(clientfd);
         exit(1);
     }
+    printf("Connected to server %s:%d successfully!\n", serverIP, SERV_PORT);
 
-    printf("✅ Connected to server %s:%d successfully!\n", serverIP, SERV_PORT);
-
-    // Step 4: Receive welcome message
+    // Step 4: Receive welcome
     int ret = recv(clientfd, buff, BUFF_SIZE, 0);
-    if (ret < 0)
+    if (ret <= 0)
     {
         perror("Error: Cannot receive welcome message");
         close(clientfd);
@@ -64,12 +62,11 @@ int main(int argc, char *argv[])
     buff[ret] = '\0';
     printf("Message from server: %s\n", buff);
 
-    // Step 5: Send UPLD command
+    // Step 5: Input file path
     char filepath[256];
     printf("Enter file path to upload: ");
     fgets(filepath, sizeof(filepath), stdin);
-    filepath[strcspn(filepath, "\n")] = '\0'; // Remove newline character
-
+    filepath[strcspn(filepath, "\n")] = '\0';
     if (strlen(filepath) == 0)
     {
         printf("No file entered. Exiting.\n");
@@ -77,14 +74,11 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // Get filename (remove path)
+    // Get filename
     char *filename = strrchr(filepath, '/');
-    if (filename)
-        filename++;
-    else
-        filename = filepath;
+    filename = filename ? filename + 1 : filepath;
 
-    // Get file size
+    // Get filesize
     struct stat st;
     if (stat(filepath, &st) != 0)
     {
@@ -94,31 +88,64 @@ int main(int argc, char *argv[])
     }
     long filesize = st.st_size;
 
-    // Create UPLD message
+    // Step 6: Send upload command
     snprintf(buff, sizeof(buff), "UPLD %s %ld\r\n", filename, filesize);
-    printf("Sending command: %s", buff);
+    send(clientfd, buff, strlen(buff), 0);
 
-    ret = send(clientfd, buff, strlen(buff), 0);
-    if (ret < 0)
-    {
-        perror("Error: Cannot send command");
-        close(clientfd);
-        exit(1);
-    }
-
-    // Step 6: Receive response from server
+    // Step 7: Wait for server to allow file transfer
     ret = recv(clientfd, buff, BUFF_SIZE, 0);
-    if (ret < 0)
+    if (ret <= 0)
     {
-        perror("Error: Cannot receive server response");
+        perror("Error: No response from server");
+        close(clientfd);
+        exit(1);
+    }
+    buff[ret] = '\0';
+    printf("Server response: %s\n", buff);
+
+    // Step 8: Send file content
+    FILE *f = fopen(filepath, "rb");
+    if (f == NULL)
+    {
+        perror("Error: Cannot open file");
         close(clientfd);
         exit(1);
     }
 
-    buff[ret] = '\0';
-    printf("Response from server: %s\n", buff);
+    printf("Uploading '%s' (%ld bytes)...\n", filename, filesize);
 
-    // Step 7: Close connection
+    long sentBytes = 0;
+    while (!feof(f))
+    {
+        size_t bytesRead = fread(buff, 1, BUFF_SIZE, f);
+        if (bytesRead > 0)
+        {
+            size_t bytesSent = send(clientfd, buff, bytesRead, 0);
+            if (bytesSent < 0)
+            {
+                perror("Error: send()");
+                fclose(f);
+                close(clientfd);
+                exit(1);
+            }
+            sentBytes += bytesSent;
+        }
+    }
+    fclose(f);
+    printf("Sent %ld bytes to server.\n", sentBytes);
+
+    // Step 9: Wait for success confirmation
+    ret = recv(clientfd, buff, BUFF_SIZE, 0);
+    if (ret > 0)
+    {
+        buff[ret] = '\0';
+        printf("Server final response: %s\n", buff);
+    }
+    else
+    {
+        perror("Error: No final response");
+    }
+
     close(clientfd);
     printf("Connection closed.\n");
     return 0;
