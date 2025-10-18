@@ -23,10 +23,6 @@ int main(int argc, char *argv[])
     int SERV_PORT = atoi(argv[1]);
     char *storageDir = argv[2];
 
-    printf("Server starting...\n");
-    printf("Port: %d\n", SERV_PORT);
-    printf("Storage directory: %s\n", storageDir);
-
     // Step 1: Construct socket
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if (listenfd < 0)
@@ -35,7 +31,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Step 2: Bind address to socket
+    // Step 2: Bind
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -48,7 +44,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Step 3: Listen request from client
+    // Step 3: Listen
     if (listen(listenfd, BACKLOG) < 0)
     {
         perror("Error: Cannot listen");
@@ -56,45 +52,48 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    printf("Server started successfully!\n");
-    printf("Listening on port %d...\n", SERV_PORT);
+    printf("Server listening on port %d...\n", SERV_PORT);
 
-    // Step 4: Communicate with client
+    // Step 4: Accept connections
     int clientAddrLen = sizeof(clientAddr);
-
     while (1)
     {
-        // Accept request
         connfd = accept(listenfd, (struct sockaddr *)&clientAddr, (socklen_t *)&clientAddrLen);
         if (connfd < 0)
         {
-            perror("Error: Cannot accept connection");
+            perror("Error: accept()");
             continue;
         }
 
         printf("Accepted connection from %s:%d\n",
-               inet_ntoa(clientAddr.sin_addr),
-               ntohs(clientAddr.sin_port));
+               inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
 
-        // send welcome message (test)
-        char *welcomeMsg = "+OK Welcome to file server";
-        int sendBytes = send(connfd, welcomeMsg, strlen(welcomeMsg), 0);
-        if (sendBytes < 0)
+        // Gửi chào mừng
+        char *welcome = "+OK Welcome to file server";
+        send(connfd, welcome, strlen(welcome), 0);
+
+        // Nhận thông điệp từ client
+        int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
+        if (rcvBytes <= 0)
         {
-            perror("Error: Cannot send welcome message");
-        }
-        else
-        {
-            printf("Sent welcome message to client [%s:%d]\n",
-                   inet_ntoa(clientAddr.sin_addr),
-                   ntohs(clientAddr.sin_port));
+            perror("Error: Cannot receive command");
+            close(connfd);
+            continue;
         }
 
-        // Close connection with client (temporarily, for testing)
+        buff[rcvBytes] = '\0';
+        printf("Received from client [%s:%d]: %s\n",
+               inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff);
+
+        // Phản hồi yêu cầu UPLD
+        char *resp = "+OK Please send file";
+        send(connfd, resp, strlen(resp), 0);
+        printf("Sent response to client [%s:%d]\n",
+               inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+
         close(connfd);
     }
 
-    // Never reached
     close(listenfd);
     return 0;
 }
