@@ -3,8 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
+
+#include "file_transfer/file_transfer.h"
+#include "validation/validation.h"
 
 #define BUFF_SIZE 16384 // 16KB block size
 
@@ -31,122 +32,48 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Step 2: Server address
-    bzero(&servAddr, sizeof(servAddr));
+    // Step 2: Connect
+    memset(&servAddr, 0, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_port = htons(SERV_PORT);
-    if (inet_pton(AF_INET, serverIP, &servAddr.sin_addr) <= 0)
-    {
-        perror("Error: Invalid address");
-        close(clientfd);
-        exit(1);
-    }
+    inet_pton(AF_INET, serverIP, &servAddr.sin_addr);
 
-    // Step 3: Connect
     if (connect(clientfd, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0)
     {
         perror("Error: Cannot connect to server");
         close(clientfd);
         exit(1);
     }
+
     printf("Connected to server %s:%d successfully!\n", serverIP, SERV_PORT);
 
-    // Step 4: Receive welcome
-    int ret = recv(clientfd, buff, BUFF_SIZE, 0);
-    if (ret <= 0)
-    {
-        perror("Error: Cannot receive welcome message");
-        close(clientfd);
-        exit(1);
-    }
-    buff[ret] = '\0';
-    printf("Message from server: %s\n", buff);
+    // Step 3: Receive welcome message
+    int ret = recv_message(clientfd, buff, BUFF_SIZE);
+    if (ret > 0)
+        printf("Message from server: %s\n", buff);
 
-    // Step 5: Loop for multiple file uploads
+    // Step 4: Upload files
     while (1)
     {
-        // Input file path
         char filepath[256];
         printf("Enter file path to upload (empty to exit): ");
         fgets(filepath, sizeof(filepath), stdin);
         filepath[strcspn(filepath, "\n")] = '\0';
 
-        // Check if user wants to exit
         if (strlen(filepath) == 0)
-        {
-            printf("Exiting.\n");
             break;
-        }
 
-        // Get filename
-        char *filename = strrchr(filepath, '/');
-        filename = filename ? filename + 1 : filepath;
-
-        // Get filesize
-        struct stat st;
-        if (stat(filepath, &st) != 0)
+        if (!validate_file(filepath))
         {
-            perror("Error: Cannot get file size");
-            continue; // Continue to next iteration instead of exiting
+            printf("Error: Invalid file path.\n");
+            continue;
         }
-        long filesize = st.st_size;
 
-        // Send upload command
-        snprintf(buff, sizeof(buff), "UPLD %s %ld", filename, filesize);
-        send(clientfd, buff, strlen(buff), 0);
-
-        // Wait for server to allow file transfer
-        ret = recv(clientfd, buff, BUFF_SIZE, 0);
-        if (ret <= 0)
+        if (send_file(clientfd, filepath) != 0)
         {
-            perror("Error: No response from server");
-            break;
+            printf("Error: Failed to upload file.\n");
         }
-        buff[ret] = '\0';
-        printf("Server response: %s\n", buff);
-
-        // Send file content
-        FILE *f = fopen(filepath, "rb");
-        if (f == NULL)
-        {
-            perror("Error: Cannot open file");
-            continue; // Continue to next iteration instead of exiting
-        }
-
-        printf("Uploading '%s' (%ld bytes)...\n", filename, filesize);
-
-        long sentBytes = 0;
-        while (!feof(f))
-        {
-            size_t bytesRead = fread(buff, 1, BUFF_SIZE, f);
-            if (bytesRead > 0)
-            {
-                size_t bytesSent = send(clientfd, buff, bytesRead, 0);
-                if (bytesSent < 0)
-                {
-                    perror("Error: send()");
-                    fclose(f);
-                    break;
-                }
-                sentBytes += bytesSent;
-            }
-        }
-        fclose(f);
-        printf("Sent %ld bytes to server.\n", sentBytes);
-
-        // Wait for success confirmation
-        ret = recv(clientfd, buff, BUFF_SIZE, 0);
-        if (ret > 0)
-        {
-            buff[ret] = '\0';
-            printf("Server final response: %s\n", buff);
-        }
-        else
-        {
-            perror("Error: No final response");
-        }
-
-        printf("\n"); // Add spacing between uploads
+        printf("\n");
     }
 
     close(clientfd);

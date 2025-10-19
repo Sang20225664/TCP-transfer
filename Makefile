@@ -8,7 +8,9 @@ server: TCP_Server/server.c \
 	cc $^ -o server
 
 client:
-	$(CC) TCP_Client/client.c TCP_Client/file_transfer.c TCP_Client/validation.c -o client
+	$(CC) TCP_Client/client.c \
+	TCP_Client/file_transfer/file_transfer.c \
+	TCP_Client/validation/validation.c -o client
 
 clean:
 	rm -f server client
