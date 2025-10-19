@@ -8,6 +8,8 @@
 
 #define BACKLOG 10
 #define BUFF_SIZE 1024
+#include "logger/logger.h"
+#define mssv "20225664"
 
 int main(int argc, char *argv[])
 {
@@ -85,10 +87,15 @@ int main(int argc, char *argv[])
         char *welcome = "+OK Welcome to file server";
         send(connfd, welcome, strlen(welcome), 0);
 
+        // Log welcome message (no command part)
+        writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port),
+                 "", welcome);
+
         // Loop to handle multiple file uploads from the same client
         while (1)
         {
             // Receive UPLD command
+            memset(buff, 0, sizeof(buff)); // Clear buffer
             int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
             if (rcvBytes <= 0)
             {
@@ -96,6 +103,15 @@ int main(int argc, char *argv[])
                 break;
             }
             buff[rcvBytes] = '\0';
+
+            // Remove any trailing whitespace or newline characters
+            char *end = buff + strlen(buff) - 1;
+            while (end > buff && (*end == '\n' || *end == '\r' || *end == ' '))
+            {
+                *end = '\0';
+                end--;
+            }
+
             printf("Received: %s\n", buff);
 
             // Parse UPLD command
@@ -103,9 +119,13 @@ int main(int argc, char *argv[])
             long filesize;
             if (sscanf(buff, "UPLD %s %ld", filename, &filesize) != 2)
             {
-                printf("Invalid command format.\n");
+                printf("Invalid command format. Expected: UPLD filename size\n");
                 break;
             }
+
+            // Store original command for logging
+            char originalCommand[BUFF_SIZE + 1];
+            strcpy(originalCommand, buff);
 
             // Send response to client
             char *resp = "+OK Please send file";
@@ -140,6 +160,10 @@ int main(int argc, char *argv[])
             // Send completion notification
             char *done = "+OK Successful upload";
             send(connfd, done, strlen(done), 0);
+
+            // Log the upload event with original command
+            writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port),
+                     originalCommand, done);
         }
 
         close(connfd);

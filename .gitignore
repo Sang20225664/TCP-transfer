@@ -1,5 +1,6 @@
 *.o
 *.txt
+*.png
 client
 server
 # storage folder

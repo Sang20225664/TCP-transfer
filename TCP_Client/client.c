@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
         long filesize = st.st_size;
 
         // Send upload command
-        snprintf(buff, sizeof(buff), "UPLD %s %ld\r\n", filename, filesize);
+        snprintf(buff, sizeof(buff), "UPLD %s %ld", filename, filesize);
         send(clientfd, buff, strlen(buff), 0);
 
         // Wait for server to allow file transfer
