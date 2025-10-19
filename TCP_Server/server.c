@@ -6,9 +6,13 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
+#include "logger/logger.h"
+#include "message/message.h"
+#include "validation/validation.h"
+#include "receiver/file_receiver.h"
+
 #define BACKLOG 10
 #define BUFF_SIZE 1024
-#include "logger/logger.h"
 #define mssv "20225664"
 
 int main(int argc, char *argv[])
@@ -71,6 +75,7 @@ int main(int argc, char *argv[])
 
     // Step 4: Accept connections
     int clientAddrLen = sizeof(clientAddr);
+
     while (1)
     {
         connfd = accept(listenfd, (struct sockaddr *)&clientAddr, (socklen_t *)&clientAddrLen);
@@ -85,89 +90,59 @@ int main(int argc, char *argv[])
 
         // Send welcome message
         char *welcome = "+OK Welcome to file server";
-        send(connfd, welcome, strlen(welcome), 0);
+        send_message(connfd, welcome);
 
-        // Log welcome message (no command part)
         writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port),
                  "", welcome);
 
-        // Loop to handle multiple file uploads from the same client
+        // Receive multiple files from the same client
         while (1)
         {
-            // Receive UPLD command
-            memset(buff, 0, sizeof(buff)); // Clear buffer
-            int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
-            if (rcvBytes <= 0)
+            memset(buff, 0, sizeof(buff));
+            if (recv_message(connfd, buff, BUFF_SIZE) <= 0)
             {
-                printf("Client disconnected or error receiving command\n");
+                printf("Client disconnected.\n");
                 break;
-            }
-            buff[rcvBytes] = '\0';
-
-            // Remove any trailing whitespace or newline characters
-            char *end = buff + strlen(buff) - 1;
-            while (end > buff && (*end == '\n' || *end == '\r' || *end == ' '))
-            {
-                *end = '\0';
-                end--;
             }
 
             printf("Received: %s\n", buff);
 
-            // Parse UPLD command
+            // Check command validity
+            if (!validate_command(buff))
+            {
+                char *err = "-ERR Invalid command format";
+                send_message(connfd, err);
+                writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff, err);
+                continue;
+            }
+
+            // Parse command
             char filename[256];
             long filesize;
-            if (sscanf(buff, "UPLD %s %ld", filename, &filesize) != 2)
-            {
-                printf("Invalid command format. Expected: UPLD filename size\n");
-                break;
-            }
+            sscanf(buff, "UPLD %s %ld", filename, &filesize);
 
-            // Store original command for logging
-            char originalCommand[BUFF_SIZE + 1];
-            strcpy(originalCommand, buff);
-
-            // Send response to client
+            // Send server ready response
             char *resp = "+OK Please send file";
-            send(connfd, resp, strlen(resp), 0);
+            send_message(connfd, resp);
 
-            // Create destination file path
-            char filepath[512];
-            snprintf(filepath, sizeof(filepath), "%s/%s", storageDir, filename);
-            FILE *f = fopen(filepath, "wb");
-            if (f == NULL)
+            // Receive file
+            int status = receive_file(connfd, storageDir, filename, filesize);
+            if (status == 0)
             {
-                perror("Error: Cannot open file to write");
-                break;
+                char *done = "+OK Successful upload";
+                send_message(connfd, done);
+                writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff, done);
             }
-
-            printf("Receiving file '%s' (%ld bytes)...\n", filename, filesize);
-
-            // Receive file data
-            long received = 0;
-            while (received < filesize)
+            else
             {
-                int bytes = recv(connfd, buff, BUFF_SIZE, 0);
-                if (bytes <= 0)
-                    break;
-                fwrite(buff, 1, bytes, f);
-                received += bytes;
+                char *fail = "-ERR File receive failed";
+                send_message(connfd, fail);
+                writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff, fail);
             }
-
-            fclose(f);
-            printf("File '%s' received (%ld/%ld bytes)\n", filename, received, filesize);
-
-            // Send completion notification
-            char *done = "+OK Successful upload";
-            send(connfd, done, strlen(done), 0);
-
-            // Log the upload event with original command
-            writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port),
-                     originalCommand, done);
         }
 
         close(connfd);
-        printf("Connection with client closed\n\n");
+        printf("Connection closed.\n\n");
     }
 
     close(listenfd);
