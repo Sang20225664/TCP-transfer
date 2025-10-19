@@ -62,88 +62,91 @@ int main(int argc, char *argv[])
     buff[ret] = '\0';
     printf("Message from server: %s\n", buff);
 
-    // Step 5: Input file path
-    char filepath[256];
-    printf("Enter file path to upload: ");
-    fgets(filepath, sizeof(filepath), stdin);
-    filepath[strcspn(filepath, "\n")] = '\0';
-    if (strlen(filepath) == 0)
+    // Step 5: Loop for multiple file uploads
+    while (1)
     {
-        printf("No file entered. Exiting.\n");
-        close(clientfd);
-        return 0;
-    }
+        // Input file path
+        char filepath[256];
+        printf("Enter file path to upload (empty to exit): ");
+        fgets(filepath, sizeof(filepath), stdin);
+        filepath[strcspn(filepath, "\n")] = '\0';
 
-    // Get filename
-    char *filename = strrchr(filepath, '/');
-    filename = filename ? filename + 1 : filepath;
-
-    // Get filesize
-    struct stat st;
-    if (stat(filepath, &st) != 0)
-    {
-        perror("Error: Cannot get file size");
-        close(clientfd);
-        exit(1);
-    }
-    long filesize = st.st_size;
-
-    // Step 6: Send upload command
-    snprintf(buff, sizeof(buff), "UPLD %s %ld\r\n", filename, filesize);
-    send(clientfd, buff, strlen(buff), 0);
-
-    // Step 7: Wait for server to allow file transfer
-    ret = recv(clientfd, buff, BUFF_SIZE, 0);
-    if (ret <= 0)
-    {
-        perror("Error: No response from server");
-        close(clientfd);
-        exit(1);
-    }
-    buff[ret] = '\0';
-    printf("Server response: %s\n", buff);
-
-    // Step 8: Send file content
-    FILE *f = fopen(filepath, "rb");
-    if (f == NULL)
-    {
-        perror("Error: Cannot open file");
-        close(clientfd);
-        exit(1);
-    }
-
-    printf("Uploading '%s' (%ld bytes)...\n", filename, filesize);
-
-    long sentBytes = 0;
-    while (!feof(f))
-    {
-        size_t bytesRead = fread(buff, 1, BUFF_SIZE, f);
-        if (bytesRead > 0)
+        // Check if user wants to exit
+        if (strlen(filepath) == 0)
         {
-            size_t bytesSent = send(clientfd, buff, bytesRead, 0);
-            if (bytesSent < 0)
-            {
-                perror("Error: send()");
-                fclose(f);
-                close(clientfd);
-                exit(1);
-            }
-            sentBytes += bytesSent;
+            printf("Exiting.\n");
+            break;
         }
-    }
-    fclose(f);
-    printf("Sent %ld bytes to server.\n", sentBytes);
 
-    // Step 9: Wait for success confirmation
-    ret = recv(clientfd, buff, BUFF_SIZE, 0);
-    if (ret > 0)
-    {
+        // Get filename
+        char *filename = strrchr(filepath, '/');
+        filename = filename ? filename + 1 : filepath;
+
+        // Get filesize
+        struct stat st;
+        if (stat(filepath, &st) != 0)
+        {
+            perror("Error: Cannot get file size");
+            continue; // Continue to next iteration instead of exiting
+        }
+        long filesize = st.st_size;
+
+        // Send upload command
+        snprintf(buff, sizeof(buff), "UPLD %s %ld\r\n", filename, filesize);
+        send(clientfd, buff, strlen(buff), 0);
+
+        // Wait for server to allow file transfer
+        ret = recv(clientfd, buff, BUFF_SIZE, 0);
+        if (ret <= 0)
+        {
+            perror("Error: No response from server");
+            break;
+        }
         buff[ret] = '\0';
-        printf("Server final response: %s\n", buff);
-    }
-    else
-    {
-        perror("Error: No final response");
+        printf("Server response: %s\n", buff);
+
+        // Send file content
+        FILE *f = fopen(filepath, "rb");
+        if (f == NULL)
+        {
+            perror("Error: Cannot open file");
+            continue; // Continue to next iteration instead of exiting
+        }
+
+        printf("Uploading '%s' (%ld bytes)...\n", filename, filesize);
+
+        long sentBytes = 0;
+        while (!feof(f))
+        {
+            size_t bytesRead = fread(buff, 1, BUFF_SIZE, f);
+            if (bytesRead > 0)
+            {
+                size_t bytesSent = send(clientfd, buff, bytesRead, 0);
+                if (bytesSent < 0)
+                {
+                    perror("Error: send()");
+                    fclose(f);
+                    break;
+                }
+                sentBytes += bytesSent;
+            }
+        }
+        fclose(f);
+        printf("Sent %ld bytes to server.\n", sentBytes);
+
+        // Wait for success confirmation
+        ret = recv(clientfd, buff, BUFF_SIZE, 0);
+        if (ret > 0)
+        {
+            buff[ret] = '\0';
+            printf("Server final response: %s\n", buff);
+        }
+        else
+        {
+            perror("Error: No final response");
+        }
+
+        printf("\n"); // Add spacing between uploads
     }
 
     close(clientfd);

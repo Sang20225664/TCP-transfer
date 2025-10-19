@@ -85,63 +85,65 @@ int main(int argc, char *argv[])
         char *welcome = "+OK Welcome to file server";
         send(connfd, welcome, strlen(welcome), 0);
 
-        // Receive UPLD command
-        int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
-        if (rcvBytes <= 0)
+        // Loop to handle multiple file uploads from the same client
+        while (1)
         {
-            perror("Error: Cannot receive command");
-            close(connfd);
-            continue;
-        }
-        buff[rcvBytes] = '\0';
-        printf("Received: %s\n", buff);
-
-        // Parse UPLD command
-        char filename[256];
-        long filesize;
-        if (sscanf(buff, "UPLD %s %ld", filename, &filesize) != 2)
-        {
-            printf("Invalid command format.\n");
-            close(connfd);
-            continue;
-        }
-
-        // Send response to client
-        char *resp = "+OK Please send file";
-        send(connfd, resp, strlen(resp), 0);
-
-        // Create destination file path
-        char filepath[512];
-        snprintf(filepath, sizeof(filepath), "%s/%s", storageDir, filename);
-        FILE *f = fopen(filepath, "wb");
-        if (f == NULL)
-        {
-            perror("Error: Cannot open file to write");
-            close(connfd);
-            continue;
-        }
-
-        printf("Receiving file '%s' (%ld bytes)...\n", filename, filesize);
-
-        // Receive file data
-        long received = 0;
-        while (received < filesize)
-        {
-            int bytes = recv(connfd, buff, BUFF_SIZE, 0);
-            if (bytes <= 0)
+            // Receive UPLD command
+            int rcvBytes = recv(connfd, buff, BUFF_SIZE, 0);
+            if (rcvBytes <= 0)
+            {
+                printf("Client disconnected or error receiving command\n");
                 break;
-            fwrite(buff, 1, bytes, f);
-            received += bytes;
+            }
+            buff[rcvBytes] = '\0';
+            printf("Received: %s\n", buff);
+
+            // Parse UPLD command
+            char filename[256];
+            long filesize;
+            if (sscanf(buff, "UPLD %s %ld", filename, &filesize) != 2)
+            {
+                printf("Invalid command format.\n");
+                break;
+            }
+
+            // Send response to client
+            char *resp = "+OK Please send file";
+            send(connfd, resp, strlen(resp), 0);
+
+            // Create destination file path
+            char filepath[512];
+            snprintf(filepath, sizeof(filepath), "%s/%s", storageDir, filename);
+            FILE *f = fopen(filepath, "wb");
+            if (f == NULL)
+            {
+                perror("Error: Cannot open file to write");
+                break;
+            }
+
+            printf("Receiving file '%s' (%ld bytes)...\n", filename, filesize);
+
+            // Receive file data
+            long received = 0;
+            while (received < filesize)
+            {
+                int bytes = recv(connfd, buff, BUFF_SIZE, 0);
+                if (bytes <= 0)
+                    break;
+                fwrite(buff, 1, bytes, f);
+                received += bytes;
+            }
+
+            fclose(f);
+            printf("File '%s' received (%ld/%ld bytes)\n", filename, received, filesize);
+
+            // Send completion notification
+            char *done = "+OK Successful upload";
+            send(connfd, done, strlen(done), 0);
         }
-
-        fclose(f);
-        printf("File '%s' received (%ld/%ld bytes)\n", filename, received, filesize);
-
-        // Send completion notification
-        char *done = "+OK Successful upload";
-        send(connfd, done, strlen(done), 0);
 
         close(connfd);
+        printf("Connection with client closed\n\n");
     }
 
     close(listenfd);
