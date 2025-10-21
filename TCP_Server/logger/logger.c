@@ -3,6 +3,22 @@
 #include <time.h>
 #include <string.h>
 
+/**
+ * @brief Write a log entry to the log file
+ * @param mssv Student ID used in log filename
+ * @param clientIP Client IP address
+ * @param clientPort Client port number
+ * @param command Command issued by client (empty for welcome message)
+ * @param response Server response message
+ * - description
+ * 1. Open log file named "log_<mssv>.txt" in append mode
+ * 2. Get current timestamp in "DD/MM/YYYY HH:MM:SS" format
+ * 3. Write log entry in format:
+ *    - For upload commands: [time]$IP:Port$command$response
+ *    - For welcome message: [time]$IP:Port$response
+ * 4. Close the log file
+ */
+
 void writeLog(const char *mssv, const char *clientIP, int clientPort,
               const char *command, const char *response)
 {

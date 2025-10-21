@@ -8,12 +8,23 @@
 
 #include "logger/logger.h"
 #include "message/message.h"
-#include "validation/validation.h"
 #include "receiver/file_receiver.h"
 
 #define BACKLOG 10
 #define BUFF_SIZE 1024
 #define mssv "20225664"
+
+/**
+ * @brief Main function for TCP server
+ * @param argc Argument count
+ * @param argv Argument vector
+ * @return Exit status
+ * - description
+ * 1. Parse command line arguments for port number and storage directory
+ * 2. Create socket, bind, and listen for incoming connections
+ * 3. Accept client connections and handle file uploads
+ * 4. Log all activities using writeLog function
+ */
 
 int main(int argc, char *argv[])
 {
@@ -106,15 +117,6 @@ int main(int argc, char *argv[])
             }
 
             printf("Received: %s\n", buff);
-
-            // Check command validity
-            if (!validate_command(buff))
-            {
-                char *err = "-ERR Invalid command format";
-                send_message(connfd, err);
-                writeLog(mssv, inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port), buff, err);
-                continue;
-            }
 
             // Parse command
             char filename[256];

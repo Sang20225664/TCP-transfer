@@ -7,6 +7,13 @@
 
 #define BUFF_SIZE 16384 // 16KB
 
+/**
+ * @brief Receive a message from the socket
+ * @param sockfd Socket file descriptor
+ * @param buff Buffer to store the received message
+ * @param size Size of the buffer
+ * @return Number of bytes received, -1 on erro
+ */
 int recv_message(int sockfd, char *buff, size_t size)
 {
     int ret = recv(sockfd, buff, size, 0);
@@ -16,6 +23,17 @@ int recv_message(int sockfd, char *buff, size_t size)
     return ret;
 }
 
+/**
+ * @brief Send a file to the server
+ * @param sockfd Socket file descriptor
+ * @param filepath Path of the file to send
+ * @return 0 on success, -1 on error
+ * - description
+ * 1. Send "UPLD <filename> <filesize>" command to server
+ * 2. Wait for server to respond with "+OK" to proceed
+ * 3. Send the file content in chunks
+ * 4. Wait for final response from server
+ */
 int send_file(int sockfd, const char *filepath)
 {
     char buff[BUFF_SIZE + 1];

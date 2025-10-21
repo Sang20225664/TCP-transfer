@@ -6,6 +6,21 @@
 
 #define BUFF_SIZE 1024
 
+/**
+ * @brief Receive a file from the client
+ * @param connfd Connection file descriptor
+ * @param storageDir Directory to store the received file
+ * @param filename Name of the file to receive
+ * @param filesize Size of the file to receive
+ * @return 0 on success, -1 on error
+ * - description
+ * 1. Construct full file path by combining storageDir and filename
+ * 2. Open file in binary write mode
+ * 3. Loop to receive data in chunks until filesize is reached
+ * 4. Write received data to file
+ * 5. Close the file
+ */
+
 int receive_file(int connfd, const char *storageDir, const char *filename, long filesize)
 {
     char filepath[512];

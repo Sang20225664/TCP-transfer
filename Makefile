@@ -3,7 +3,6 @@ all: server client
 server: TCP_Server/server.c \
         TCP_Server/message/message.c \
         TCP_Server/receiver/file_receiver.c \
-        TCP_Server/validation/validation.c \
         TCP_Server/logger/logger.c
 	cc $^ -o server
 

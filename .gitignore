@@ -7,4 +7,6 @@ server
 storage/*
 # log files
 logs/*.log
+.vscode
+tests/*
 

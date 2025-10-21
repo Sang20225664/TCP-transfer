@@ -5,9 +5,20 @@
 #include <arpa/inet.h>
 
 #include "file_transfer/file_transfer.h"
-#include "validation/validation.h"
 
 #define BUFF_SIZE 16384 // 16KB block size
+
+/**
+ * @brief Main function for TCP client
+ * @param argc Argument count
+ * @param argv Argument vector
+ * @return Exit status
+ * - description
+ * 1. Parse command line arguments for server IP and port
+ * 2. Create socket and connect to server
+ * 3. Receive welcome message from server
+ * 4. Loop to upload files until user decides to exit
+ */
 
 int main(int argc, char *argv[])
 {
@@ -56,14 +67,14 @@ int main(int argc, char *argv[])
     while (1)
     {
         char filepath[256];
-        printf("Enter file path to upload (empty to exit): ");
+        printf("Server is ready to receive file. Enter file path to upload (empty to exit): ");
         fgets(filepath, sizeof(filepath), stdin);
         filepath[strcspn(filepath, "\n")] = '\0';
 
         if (strlen(filepath) == 0)
             break;
 
-        if (!validate_file(filepath))
+        if (access(filepath, F_OK) != 0)
         {
             printf("Error: Invalid file path.\n");
             continue;
